@@ -1,151 +1,140 @@
+# importing required libraries
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
-
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
-
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
-
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
-
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
+import yfinance as yf
+from datetime import datetime
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+# function calling local css sheet
+def local_css(file_name):
+    with open(file_name) as f:
+        st.sidebar.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-st.header(f'GDP in {to_year}', divider='gray')
 
-''
+# local css sheet
+local_css("style.css")
 
-cols = st.columns(4)
+body {
+    color: rgb(0, 0, 0);
+    background-color: rgb(255, 255, 255);
+}
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
+.stButton>button {
+    color: #4F8BF9;
+    border-radius: 50%;
+    height: 3em;
+    width: 3em;
+}
 
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+.stTextInput>div>div>input {
+    color: #4F8BF9;
+}
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
+    
+st.sidebar.subheader("""Stock Search Web App""")
+selected_stock = st.sidebar.text_input("Enter a valid stock ticker...", "GOOG")
+button_clicked = st.sidebar.button("GO")
+if button_clicked == "GO":
+    main()
+
+
+def main():
+    st.subheader("""Daily **closing price** for """ + selected_stock)
+    # get data on searched ticker
+    stock_data = yf.Ticker(selected_stock)
+    # get historical data for searched ticker
+    stock_df = stock_data.history(period='1d', start='2020-01-01', end=None)
+    # print line chart with daily closing prices for searched ticker
+    st.line_chart(stock_df.Close)
+
+    st.subheader("""Last **closing price** for """ + selected_stock)
+    # define variable today
+    today = datetime.today().strftime('%Y-%m-%d')
+    # get current date data for searched ticker
+    stock_lastprice = stock_data.history(period='1d', start=today, end=today)
+    # get current date closing price for searched ticker
+    last_price = (stock_lastprice.Close)
+    # if market is closed on current date print that there is no data available
+    if last_price.empty == True:
+        st.write("No data available at the moment")
+    else:
+        st.write(last_price)
+
+    # get daily volume for searched ticker
+    st.subheader("""Daily **volume** for """ + selected_stock)
+    st.line_chart(stock_df.Volume)
+
+    # additional information feature in sidebar
+    st.sidebar.subheader("""Display Additional Information""")
+    # checkbox to display stock actions for the searched ticker
+    actions = st.sidebar.checkbox("Stock Actions")
+    if actions:
+        st.subheader("""Stock **actions** for """ + selected_stock)
+        display_action = (stock_data.actions)
+        if display_action.empty == True:
+            st.write("No data available at the moment")
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+            st.write(display_action)
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+    # checkbox to display quarterly financials for the searched ticker
+    financials = st.sidebar.checkbox("Quarterly Financials")
+    if financials:
+        st.subheader("""**Quarterly financials** for """ + selected_stock)
+        display_financials = (stock_data.quarterly_financials)
+        if display_financials.empty == True:
+            st.write("No data available at the moment")
+        else:
+            st.write(display_financials)
+
+    # checkbox to display list of institutional shareholders for searched ticker
+    major_shareholders = st.sidebar.checkbox("Institutional Shareholders")
+    if major_shareholders:
+        st.subheader("""**Institutional investors** for """ + selected_stock)
+        display_shareholders = (stock_data.institutional_holders)
+        if display_shareholders.empty == True:
+            st.write("No data available at the moment")
+        else:
+            st.write(display_shareholders)
+
+    # checkbox to display quarterly balance sheet for searched ticker
+    balance_sheet = st.sidebar.checkbox("Quarterly Balance Sheet")
+    if balance_sheet:
+        st.subheader("""**Quarterly balance sheet** for """ + selected_stock)
+        display_balancesheet = (stock_data.quarterly_balance_sheet)
+        if display_balancesheet.empty == True:
+            st.write("No data available at the moment")
+        else:
+            st.write(display_balancesheet)
+
+    # checkbox to display quarterly cashflow for searched ticker
+    cashflow = st.sidebar.checkbox("Quarterly Cashflow")
+    if cashflow:
+        st.subheader("""**Quarterly cashflow** for """ + selected_stock)
+        display_cashflow = (stock_data.quarterly_cashflow)
+        if display_cashflow.empty == True:
+            st.write("No data available at the moment")
+        else:
+            st.write(display_cashflow)
+
+    # checkbox to display quarterly earnings for searched ticker
+    earnings = st.sidebar.checkbox("Quarterly Earnings")
+    if earnings:
+        st.subheader("""**Quarterly earnings** for """ + selected_stock)
+        display_earnings = (stock_data.quarterly_earnings)
+        if display_earnings.empty == True:
+            st.write("No data available at the moment")
+        else:
+            st.write(display_earnings)
+
+    # checkbox to display list of analysts recommendation for searched ticker
+    analyst_recommendation = st.sidebar.checkbox("Analysts Recommendation")
+    if analyst_recommendation:
+        st.subheader("""**Analysts recommendation** for """ + selected_stock)
+        display_analyst_rec = (stock_data.recommendations)
+        if display_analyst_rec.empty == True:
+            st.write("No data available at the moment")
+        else:
+            st.write(display_analyst_rec)
+
+
+if __name__ == "__main__":
+    main()
